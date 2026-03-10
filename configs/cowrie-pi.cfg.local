@@ -1,0 +1,28 @@
+# Cowrie configuration override — Raspberry Pi 5 (Local DMZ Sensor)
+# Location: /home/cowrie/cowrie/etc/cowrie.cfg.local
+#
+# This file overrides specific settings from cowrie.cfg (the base config).
+# Never edit cowrie.cfg directly — updates will overwrite your changes.
+# Only settings listed here are changed; everything else uses the default.
+
+[honeypot]
+# The fake hostname shown to attackers after they "log in"
+hostname = smart-sensor-office-01
+
+# Fake OS version string presented in the SSH banner
+# Looks like a real Ubuntu server to make the trap believable
+kernel_version = 5.4.0-74-generic
+kernel_build_string = #83-Ubuntu SMP Sat May 8 02:35:39 UTC 2021
+
+[ssh]
+# Port Cowrie listens on
+# Real SSH was moved to port 2224, so Cowrie can take port 22
+# authbind is used to allow a non-root user to bind port 22
+listen_port = 22
+
+# Fake SSH version banner presented to attackers
+version = SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.3
+
+[output_jsonlog]
+# Enable JSON log output for easier parsing with ELK Stack (Phase 5)
+enabled = true

@@ -1,0 +1,25 @@
+# Cowrie configuration override — AWS EC2 Cloud Sensor (Cloud-Sensor-V2)
+# Location: /home/cowrie/cowrie/etc/cowrie.cfg.local
+#
+# This file overrides specific settings from cowrie.cfg (the base config).
+# Never edit cowrie.cfg directly — updates will overwrite your changes.
+
+[honeypot]
+# The fake hostname shown to attackers after they "log in"
+hostname = web-server-prod-01
+
+# Fake OS version string — looks like a real production server
+kernel_version = 5.15.0-1034-aws
+kernel_build_string = #38-Ubuntu SMP Mon Apr 3 17:02:11 UTC 2023
+
+[ssh]
+# Cowrie listens on 2222 internally
+# iptables PREROUTING redirects port 22 → 2222 at kernel level
+listen_port = 2222
+
+# Fake SSH version banner
+version = SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.1
+
+[output_jsonlog]
+# Enable JSON log output for ELK Stack ingestion (Phase 5)
+enabled = true
