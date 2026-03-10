@@ -1,3 +1,25 @@
+# ===================================
+# Hybrid-SOC Security Project
+# ===================================
+
+# SSH Keys & credentials — NEVER commit these!
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Cowrie live logs & attack data
+var/
+*.log
+cowrie.json
+
+# Environment files
+.env
+*.cfg.local
+
+# OS files
+.DS_Store
+Thumbs.db
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
