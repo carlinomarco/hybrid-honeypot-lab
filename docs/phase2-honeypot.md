@@ -1,87 +1,55 @@
-# Phase 2 — Raspberry Pi 5 Honeypot (IoT Sensor)
+# Phase 2 — IoT Sensor: Raspberry Pi 5 Honeypot
 
-**Status:** ✅ Complete  
-**Duration:** ~8 hours  
+## Overview
 
----
-
-## Goal
-
-Deploy a physical medium-interaction SSH honeypot inside the pfSense DMZ. The Raspberry Pi runs Cowrie — software that emulates a vulnerable server, lets attackers "log in", and silently records everything they do.
+Goal: Deploy a physical medium-interaction SSH honeypot inside the pfSense DMZ using a Raspberry Pi 5 and Cowrie.
 
 ---
 
-## Hardware
+## 2.1 Hardware Preparation
 
-| Component | Details |
-|-----------|---------|
-| Device | Raspberry Pi 5 |
-| Power | USB-C 27W (official adapter — required) |
-| Network | Ethernet → physical port → pfSense DMZ (em2) |
-| OS | Raspberry Pi OS 64-bit |
-| Assigned IP | 172.16.1.10 (DHCP from pfSense DMZ) |
+**Device:** Raspberry Pi 5  
+**OS:** Raspberry Pi OS 64-bit (Debian-based)  
+**Power:** USB-C 27W (official Pi 5 adapter recommended)  
+**Network:** Physical Ethernet cable → PC's Ethernet port → pfSense DMZ (Adapter 3, Bridged)
+
+### VirtualBox DMZ Bridging
+
+To connect the physical Pi to the virtual pfSense DMZ:
+
+1. pfSense VM → Settings → Network → Adapter 3
+2. Change "Attached to": **Bridged Adapter**
+3. Select your **physical Ethernet card**
+4. Promiscuous Mode: **Allow All**
+
+> **Why Promiscuous Mode?** Allows pfSense to see all traffic from the Pi, including packets with spoofed MAC addresses used by some attack tools. Essential for a honeypot — you don't want to miss any data.
+
+### Windows NIC Contention Fix
+
+**Problem:** When the Pi connected, the Windows host lost internet.
+
+**Cause:** Both Windows and VirtualBox tried to use the same physical Ethernet chip simultaneously — driver conflict.
+
+**Fix:**
+1. Open Windows → Network Connections → Ethernet adapter → Properties
+2. Uncheck everything **except** `VirtualBox NDIS6 Bridged Networking Driver`
+3. Windows now ignores the port, giving pfSense exclusive control
+
+### Verify Pi is on DMZ
+
+After connecting, check `Status > DHCP Leases` in pfSense WebGUI.  
+The Pi should appear with IP `172.16.1.10`.
 
 ---
 
-## What is Cowrie?
+## 2.2 Cowrie Installation
 
-Cowrie is a **medium-interaction honeypot** — the industry standard for SSH/Telnet traps.
+**What is Cowrie?**  
+Cowrie is a medium-interaction SSH/Telnet honeypot. It allows attackers to "log in" and interact with a fake shell and filesystem. It logs every command typed, every file uploaded, and every session — without ever exposing the real hardware.
 
-| Feature | Description |
-|---------|-------------|
-| Interaction level | Medium — attackers can log in and use a fake shell |
-| What it logs | Every command, every file upload, full session replay |
-| What it prevents | Attackers never reach real hardware |
-| Why weak crypto | Intentionally uses legacy algorithms so old attack tools can connect |
+Unlike low-interaction honeypots (which only fake a login prompt), Cowrie lets attackers explore a simulated environment, generating much richer threat data.
 
----
-
-## Step-by-Step Setup
-
-### 1. Flash Raspberry Pi OS
-
-- Use **Raspberry Pi Imager**
-- OS: Raspberry Pi OS (64-bit)
-- Advanced Settings:
-  - Enable SSH: ✅
-  - Allow Password Authentication: ✅ *(critical — without this SSH refuses all connections)*
-  - Hostname: `honeypot-pi`
-  - Username: `pi`
-
-### 2. Physical Connection
-
-```
-Raspberry Pi 5 (Ethernet) ──→ PC physical Ethernet port
-                                       ↓
-                           pfSense Adapter 3 (DMZ)
-                           [Bridged, Promiscuous: Allow All]
-```
-
-Verify in pfSense: **Status > DHCP Leases** → should show `raspberrypi` at `172.16.1.10`
-
-### 3. DNS Fix
-
-```bash
-# On the Raspberry Pi — fixes "Temporary failure in name resolution"
-echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
-
-# Also add in pfSense:
-# Services > DHCP Server > DMZ > DNS Servers: 8.8.8.8
-# Firewall > Rules > DMZ > Add: Pass DMZ subnet to Any
-```
-
-### 4. NIC Contention Fix (Windows Host)
-
-If Windows loses internet when SSH-ing to the Pi:
-
-1. Open **Windows Ethernet Properties** (ncpa.cpl)
-2. Find the physical Ethernet adapter
-3. Uncheck **all protocols** except `VirtualBox NDIS6 Bridged Networking Driver`
-4. Click OK
-
-This gives pfSense exclusive control of the port — Windows ignores it completely.
-
-### 5. Install Cowrie Dependencies
+### Install Dependencies
 
 ```bash
 sudo apt update && sudo apt upgrade -y
@@ -89,96 +57,140 @@ sudo apt install git python3-virtualenv libssl-dev libffi-dev \
   build-essential libpython3-dev python3-minimal authbind virtualenv -y
 ```
 
-### 6. Create Cowrie User
+### Create Restricted Service User
 
 ```bash
-# Never run Cowrie as root or pi — privilege separation is critical
+# No password, no sudo rights — privilege separation
 sudo adduser --disabled-password --gecos "" cowrie
-sudo su - cowrie
 ```
 
-### 7. Install Cowrie
+> **Why a separate user?** If an attacker somehow escapes the honeypot shell, they land in the `cowrie` account — a low-privilege user with no access to system files or the `pi` user account.
+
+### Clone and Install
 
 ```bash
+sudo su - cowrie
 git clone https://github.com/cowrie/cowrie.git
 cd cowrie
+
+# Isolated Python environment — prevents library conflicts
 virtualenv --python=python3 cowrie-env
 source cowrie-env/bin/activate
+
 pip install -r requirements.txt
-pip install -e .   # Required for modern Cowrie — links source to system commands
+
+# Editable install — required for modern Cowrie to register entry points
+pip install -e .
 ```
 
-### 8. Configure the Honeypot
+---
+
+## 2.3 Configuration
+
+Cowrie uses a `.local` override file. This way your custom settings survive future Cowrie updates.
 
 ```bash
-# Never edit cowrie.cfg directly — use the local override file
+# Never edit cowrie.cfg directly — it says "DO NOT EDIT"
 touch etc/cowrie.cfg.local
 nano etc/cowrie.cfg.local
 ```
 
-See [configs/cowrie-pi.cfg.local](../configs/cowrie-pi.cfg.local) for the full configuration.
+See: [`configs/cowrie/cowrie.cfg.local`](../configs/cowrie/cowrie.cfg.local)
 
-### 9. Port Management
+---
 
-Real SSH must vacate port 22 before Cowrie can use it:
+## 2.4 Port Redirection — Move Real SSH to Port 2224
+
+Most automated bots only scan port 22. Cowrie defaults to port 2222. To intercept real attacks, Cowrie must sit on port 22 — so the real SSH daemon must move.
 
 ```bash
-# Move real SSH to port 2224
+# Move real SSH management to port 2224
 sudo nano /etc/ssh/sshd_config
 # Change: Port 22 → Port 2224
 sudo systemctl restart ssh
-
-# Reconnect with: ssh pi@172.16.1.10 -p 2224
 ```
 
+**Reconnect on new port from Admin-PC:**
 ```bash
-# Grant Cowrie permission to bind port 22 without root
+ssh pi@172.16.1.10 -p 2224
+```
+
+### Grant Cowrie Permission to Use Port 22 (authbind)
+
+Linux blocks non-root users from binding ports below 1024. `authbind` grants specific port permissions without giving full root access.
+
+```bash
 sudo touch /etc/authbind/byport/22
 sudo chown cowrie:cowrie /etc/authbind/byport/22
 sudo chmod 770 /etc/authbind/byport/22
 ```
 
-### 10. Start & Verify
+Update `etc/cowrie.cfg.local` to set `listen_port = 22`.
+
+---
+
+## 2.5 Start and Verify
 
 ```bash
+# Start with authbind flag
 AUTHBIND_ENABLED=yes cowrie start
-cowrie status           # → cowrie is running (PID: 2032)
-netstat -tuln           # → 0.0.0.0:22 LISTEN confirmed
+
+# Verify
+cowrie status
+# → cowrie is running (PID: 1846)
+
+# Check port
+netstat -tuln
+# → 0.0.0.0:22  LISTEN  (Cowrie's PID)
+
+# Live log stream
 tail -f var/log/cowrie/cowrie.log
 ```
 
----
-
-## Verification
-
-Self-test from Admin-PC:
+### Self-Test from Admin-PC
 
 ```bash
-ssh root@172.16.1.10   # standard port, no key — simulates a real attacker
-```
-
-**Expected results:**
-- Password prompt appears (Cowrie fake shell)
-- Log shows: new connection, SSH version, encryption algorithm, hassh fingerprint
-- Any password accepted → fake interactive shell presented
-
----
-
-## Shutdown Sequence
-
-```bash
-# Always shut down in this order to preserve log integrity
-cowrie stop
-deactivate
-exit                    # return to pi user
-sudo shutdown now
+ssh root@172.16.1.10 -p 22
+# → Cowrie presents fake login prompt
+# → Admin-PC live log shows: New connection, hassh fingerprint, SSH client version
 ```
 
 ---
 
-## Key Learnings
+## 2.6 Problems & Solutions
 
-- `pip install -e .` is required — modern Cowrie needs editable install to create the binary
-- `cowrie.cfg.local` overrides `cowrie.cfg` — never edit the base file
-- Promiscuous Mode on Adapter 3 is essential — captures all traffic including spoofed packets
-- TripleDES deprecation warnings are intentional — Cowrie uses weak crypto to attract old attack tools
+### SSH Connection Refused After Reboot
+
+**Symptom:** `ssh pi@172.16.1.10 -p 2224` → "Connection refused" after Pi rebooted.
+
+**Cause:** Cowrie was not configured to auto-start. After reboot, the real SSH daemon reclaimed port 22, and port 2224 wasn't listening.
+
+**Solution:** Connect via port 22 (real SSH, since Cowrie wasn't running), then start Cowrie manually:
+
+```bash
+ssh pi@172.16.1.10 -p 22
+sudo su - cowrie && cd cowrie
+source cowrie-env/bin/activate
+AUTHBIND_ENABLED=yes cowrie start
+```
+
+**Future fix:** Add Cowrie to systemd for auto-start on boot.
+
+### DNS Resolution Failure (`Temporary failure in name resolution`)
+
+**Symptom:** `sudo apt update` failed on Pi.
+
+**Fix (three steps):**
+1. pfSense: `Services > DHCP Server > DMZ` → add DNS `8.8.8.8`
+2. pfSense: `Firewall > Rules > DMZ` → add Pass rule allowing DMZ to reach Any
+3. Manual override on Pi: `echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf`
+
+---
+
+## Milestone Result
+
+✅ Raspberry Pi 5 deployed in pfSense DMZ (IP: `172.16.1.10`)  
+✅ Cowrie running on port 22 via authbind (PID: 1846)  
+✅ Real SSH management moved to port 2224  
+✅ Live log stream confirmed: SSH fingerprints, attacker IPs, session recording  
+✅ Self-test from Admin-PC: Cowrie intercepted connection and logged it

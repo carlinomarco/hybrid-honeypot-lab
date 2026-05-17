@@ -1,0 +1,21 @@
+# Cowrie Local Override Configuration
+# This file overrides settings from cowrie.cfg (the base config).
+# Only settings you want to customize go here.
+# Cowrie reads cowrie.cfg first, then applies .local on top.
+
+[honeypot]
+# Hostname shown to attackers inside the fake shell
+hostname = smart-sensor-office-01
+
+# Fake OS version string presented to attackers
+# Makes the honeypot look like a real production server
+kernel_version = 5.15.0-91-generic
+kernel_build_string = #101-Ubuntu SMP Tue Nov 14 13:30:08 UTC 2023
+
+[ssh]
+# Port Cowrie listens on internally
+# Port 22 is forwarded here via authbind (Pi) or iptables (AWS)
+listen_port = 22
+
+# Fake SSH version string shown during handshake
+version = SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6

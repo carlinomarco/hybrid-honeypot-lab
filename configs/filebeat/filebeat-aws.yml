@@ -1,0 +1,36 @@
+# Filebeat Configuration — AWS Cloud Sensor
+# File: /etc/filebeat/filebeat.yml (on AWS EC2)
+#
+# Ships Cowrie JSON logs from AWS to Logstash on the Admin-PC
+# Traffic flows through the WireGuard VPN tunnel (10.100.0.0/24 → 192.168.1.x)
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+
+    # Cowrie writes JSON logs here
+    paths:
+      - /home/cowrie/cowrie/var/log/cowrie/cowrie.json*
+
+    # Parse each line as JSON and merge keys into the root document
+    json.keys_under_root: true
+    json.add_error_key: true
+
+    # Tag this sensor so we can filter by source in Kibana
+    fields:
+      sensor: aws-cloud-sensor
+      sensor_location: aws-ec2-public
+    fields_under_root: true
+
+# Send to Logstash on Admin-PC via WireGuard VPN
+# AWS reaches 192.168.1.101 through the tunnel (10.100.0.0/24 → LAN)
+output.logstash:
+  hosts: ["192.168.1.101:5044"]
+
+# Logging
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7

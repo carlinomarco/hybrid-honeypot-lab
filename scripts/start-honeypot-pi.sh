@@ -1,39 +1,40 @@
 #!/bin/bash
 # start-honeypot-pi.sh
-# Starts the Cowrie honeypot on the Raspberry Pi 5 (local DMZ sensor)
-# Run as: pi user (will switch to cowrie internally)
+# Starts the Cowrie honeypot on the Raspberry Pi
+# Run as: pi user (script will switch to cowrie internally)
 #
-# Usage: bash scripts/start-honeypot-pi.sh
+# Usage: ./start-honeypot-pi.sh
 
 set -e
 
 COWRIE_HOME="/home/cowrie/cowrie"
-COWRIE_USER="cowrie"
+COWRIE_ENV="$COWRIE_HOME/cowrie-env"
 
-echo "================================================"
-echo "  Hybrid-SOC — Starting Local Honeypot Sensor  "
-echo "================================================"
+echo "[*] Starting Cowrie honeypot on Raspberry Pi..."
 
-# Check we are not running as root
-if [ "$EUID" -eq 0 ]; then
-  echo "[ERROR] Do not run this script as root."
-  exit 1
+# Check if cowrie user exists
+if ! id "cowrie" &>/dev/null; then
+    echo "[!] Error: cowrie user does not exist. Run setup first."
+    exit 1
 fi
 
-echo "[1/3] Switching to cowrie user environment..."
-sudo -u "$COWRIE_USER" bash << 'EOF'
-  cd /home/cowrie/cowrie
-  source cowrie-env/bin/activate
+# Check if cowrie directory exists
+if [ ! -d "$COWRIE_HOME" ]; then
+    echo "[!] Error: Cowrie directory not found at $COWRIE_HOME"
+    exit 1
+fi
 
-  echo "[2/3] Starting Cowrie daemon..."
-  AUTHBIND_ENABLED=yes cowrie start
-
-  echo "[3/3] Verifying status..."
-  sleep 2
-  cowrie status
+# Switch to cowrie user and start
+sudo -u cowrie bash <<EOF
+cd $COWRIE_HOME
+source $COWRIE_ENV/bin/activate
+AUTHBIND_ENABLED=yes cowrie start
+sleep 2
+cowrie status
 EOF
 
-echo ""
-echo "[OK] Honeypot is running."
-echo "     Monitor logs: sudo -u cowrie bash -c 'cd ~/cowrie && tail -f var/log/cowrie/cowrie.log'"
-echo "     Stop:         sudo -u cowrie bash -c 'cd ~/cowrie && source cowrie-env/bin/activate && cowrie stop'"
+echo "[+] Checking port 22 listener..."
+netstat -tuln | grep :22 || ss -tuln | grep :22
+
+echo "[+] Cowrie started. Tailing live log (Ctrl+C to stop):"
+sudo -u cowrie bash -c "tail -f $COWRIE_HOME/var/log/cowrie/cowrie.log"

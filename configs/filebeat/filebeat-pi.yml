@@ -1,0 +1,35 @@
+# Filebeat Configuration — Raspberry Pi Sensor
+# File: /etc/filebeat/filebeat.yml (on Raspberry Pi)
+#
+# Ships Cowrie JSON logs from the Pi to Logstash on the Admin-PC
+# Traffic flows directly over LAN (192.168.1.x network)
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+
+    # Cowrie writes JSON logs here
+    paths:
+      - /home/cowrie/cowrie/var/log/cowrie/cowrie.json*
+
+    # Parse each line as JSON and merge keys into the root document
+    json.keys_under_root: true
+    json.add_error_key: true
+
+    # Tag this sensor so we can filter by source in Kibana
+    fields:
+      sensor: raspberry-pi
+      sensor_location: local-dmz
+    fields_under_root: true
+
+# Send to Logstash on Admin-PC (direct LAN connection)
+output.logstash:
+  hosts: ["192.168.1.101:5044"]
+
+# Logging
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7

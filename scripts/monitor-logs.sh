@@ -1,44 +1,37 @@
 #!/bin/bash
 # monitor-logs.sh
-# Live monitoring of Cowrie attack logs with color-coded output
-# Works on both Raspberry Pi and AWS EC2
+# Monitor Cowrie logs in real time — run from Admin-PC or directly on sensor
 #
-# Usage: bash scripts/monitor-logs.sh
+# Usage:
+#   Local (on Pi or AWS):    ./monitor-logs.sh
+#   Remote (from Admin-PC):  ./monitor-logs.sh pi
+#                            ./monitor-logs.sh aws
 
 COWRIE_LOG="/home/cowrie/cowrie/var/log/cowrie/cowrie.log"
+PI_IP="172.16.1.10"
+PI_PORT="2224"
+AWS_IP="13.51.13.199"    # Update this if your AWS IP changes
+AWS_PORT="8022"
+KEY="$HOME/keys/honeypot-key.pem"
 
-# Colors
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
-echo "================================================"
-echo "  Hybrid-SOC — Live Attack Monitor             "
-echo "  Press Ctrl+C to stop                         "
-echo "================================================"
-echo ""
-
-if [ ! -f "$COWRIE_LOG" ]; then
-  echo "Log file not found at $COWRIE_LOG"
-  echo "Is Cowrie running? Run: cowrie status"
-  exit 1
-fi
-
-# Tail the log and color-code by event type
-tail -f "$COWRIE_LOG" | while read line; do
-  if echo "$line" | grep -q "New connection"; then
-    echo -e "${CYAN}[NEW CONNECTION]${NC} $line"
-  elif echo "$line" | grep -q "login attempt"; then
-    echo -e "${YELLOW}[LOGIN ATTEMPT]${NC}  $line"
-  elif echo "$line" | grep -q "login succeeded"; then
-    echo -e "${RED}[LOGIN SUCCESS]${NC}  $line"
-  elif echo "$line" | grep -q "CMD"; then
-    echo -e "${RED}[COMMAND]${NC}        $line"
-  elif echo "$line" | grep -q "Connection lost"; then
-    echo -e "${GREEN}[DISCONNECTED]${NC}   $line"
-  else
-    echo "                 $line"
-  fi
-done
+case "$1" in
+  pi)
+    echo "[*] Monitoring Raspberry Pi honeypot logs..."
+    ssh pi@$PI_IP -p $PI_PORT "sudo tail -f $COWRIE_LOG"
+    ;;
+  aws)
+    echo "[*] Monitoring AWS Cloud-Sensor-V2 logs..."
+    ssh -i $KEY ubuntu@$AWS_IP -p $AWS_PORT "sudo -u cowrie tail -f $COWRIE_LOG"
+    ;;
+  "")
+    echo "[*] Monitoring local Cowrie logs..."
+    sudo -u cowrie tail -f $COWRIE_LOG
+    ;;
+  *)
+    echo "Usage: $0 [pi|aws]"
+    echo "  pi   — SSH into Raspberry Pi and tail logs"
+    echo "  aws  — SSH into AWS EC2 and tail logs"
+    echo "  (no arg) — tail local logs"
+    exit 1
+    ;;
+esac
